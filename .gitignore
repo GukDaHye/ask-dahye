@@ -1,0 +1,9 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.idea/
+.DS_Store
+
+# 임베딩(data/embeddings.npy)은 일부러 커밋한다.
+# 배포 시 임베딩 API 호출 없이 바로 기동되고, 검색 결과가 로컬과 동일하게 재현된다.

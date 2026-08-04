@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ask Dahye — 포트폴리오 RAG 어시스턴트</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --canvas:#f7f7f4;
+  --surface:#ffffff;
+  --primary:#f54e00;
+  --ink:#26251e;
+  --ink-soft:#5c5a4d;
+  --ink-mute:#8c8a7a;
+  --hairline:rgba(38,37,30,0.13);
+  --hairline-strong:rgba(38,37,30,0.22);
+  --radius-control:8px;
+  --radius-card:12px;
+  --font-sans:"Inter",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--canvas);
+  color:var(--ink);
+  font-family:var(--font-sans);
+  font-size:16px;
+  line-height:1.7;
+  -webkit-font-smoothing:antialiased;
+}
+
+header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:1rem;
+  padding:1.1rem 1.5rem;
+  border-bottom:1px solid var(--hairline);
+  background:var(--canvas);
+  position:sticky;
+  top:0;
+  z-index:10;
+}
+.wordmark{font-size:1rem;font-weight:500;letter-spacing:-0.01em;}
+.wordmark b{color:var(--primary);font-weight:500;}
+.label{
+  font-family:var(--font-mono);
+  font-size:0.66rem;
+  letter-spacing:0.16em;
+  text-transform:uppercase;
+  color:var(--ink-mute);
+}
+
+main{
+  max-width:720px;
+  margin:0 auto;
+  padding:0 1.5rem 5rem;
+}
+
+.hero{padding:4.5rem 0 2rem;text-align:center;}
+.eyebrow{
+  display:inline-block;
+  font-family:var(--font-mono);
+  font-size:0.7rem;
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+  color:var(--primary);
+  border:1px solid var(--hairline);
+  border-radius:9999px;
+  padding:0.2rem 0.75rem;
+  background:var(--surface);
+}
+.hero h1{
+  font-size:2.2rem;
+  font-weight:600;
+  letter-spacing:-0.03em;
+  margin:1.1rem 0 0.5rem;
+}
+.hero p{color:var(--ink-soft);font-size:0.98rem;margin:0;}
+
+.composer{padding:1rem 0 0;}
+form{display:flex;gap:0.5rem;}
+input[type=text]{
+  flex:1;
+  min-width:0;
+  font-family:inherit;
+  font-size:0.95rem;
+  color:var(--ink);
+  background:var(--surface);
+  border:1px solid var(--hairline-strong);
+  border-radius:var(--radius-control);
+  padding:0.7rem 0.85rem;
+}
+input[type=text]::placeholder{color:var(--ink-mute);}
+input[type=text]:focus{outline:2px solid var(--primary);outline-offset:-1px;border-color:var(--primary);}
+button{
+  font-family:inherit;
+  font-size:0.9rem;
+  font-weight:500;
+  color:#fff;
+  background:var(--primary);
+  border:1px solid var(--primary);
+  border-radius:var(--radius-control);
+  padding:0.7rem 1.1rem;
+  cursor:pointer;
+  white-space:nowrap;
+}
+button:disabled{opacity:0.45;cursor:default;}
+button:focus-visible{outline:2px solid var(--ink);outline-offset:2px;}
+
+.chips{
+  display:flex;
+  flex-wrap:wrap;
+  gap:0.45rem;
+  padding:1.1rem 0 0;
+}
+.chip{
+  font-family:inherit;
+  font-size:0.82rem;
+  color:var(--ink-soft);
+  background:var(--surface);
+  border:1px solid var(--hairline);
+  border-radius:9999px;
+  padding:0.35rem 0.8rem;
+  cursor:pointer;
+  text-align:left;
+  line-height:1.4;
+}
+.chip:hover{border-color:var(--primary);color:var(--primary);}
+
+body.started .hero,
+body.started .chips{display:none;}
+body.started .composer{
+  position:sticky;
+  top:58px;
+  background:var(--canvas);
+  padding:1rem 0 1.1rem;
+  border-bottom:1px solid var(--hairline);
+  z-index:9;
+}
+
+#thread{display:flex;flex-direction:column;}
+.turn{padding:1.9rem 0;border-top:1px solid var(--hairline);}
+.turn:first-child{border-top:none;}
+.turn .q{
+  font-size:1.02rem;
+  font-weight:600;
+  letter-spacing:-0.01em;
+  margin:0 0 0.9rem;
+}
+.pill{
+  display:inline-block;
+  font-family:var(--font-mono);
+  font-size:0.68rem;
+  letter-spacing:0.08em;
+  color:var(--primary);
+  background:var(--surface);
+  border:1px solid var(--hairline);
+  border-radius:9999px;
+  padding:0.2rem 0.7rem;
+}
+.pill::after{content:"";display:inline-block;width:0.35em;}
+.answer{white-space:pre-wrap;color:var(--ink);margin:0;}
+.answer.muted{color:var(--ink-mute);}
+.cursor{
+  display:inline-block;
+  width:2px;
+  height:1.05em;
+  background:var(--primary);
+  vertical-align:-0.15em;
+  margin-left:2px;
+  animation:blink 1s steps(1) infinite;
+}
+@keyframes blink{50%{opacity:0;}}
+@media (prefers-reduced-motion:reduce){.cursor{animation:none;}}
+
+.sources{display:flex;flex-wrap:wrap;gap:0.4rem;margin-top:0.95rem;}
+.source{
+  font-family:var(--font-mono);
+  font-size:0.7rem;
+  color:var(--ink-soft);
+  background:var(--surface);
+  border:1px solid var(--hairline);
+  border-radius:9999px;
+  padding:0.22rem 0.7rem;
+  text-decoration:none;
+}
+a.source:hover{border-color:var(--primary);color:var(--primary);}
+
+@media (max-width:560px){
+  .hero{padding:3rem 0 1.5rem;}
+  .hero h1{font-size:1.75rem;}
+  body.started .composer{top:54px;}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wordmark">Ask <b>Dahye</b></div>
+  <div class="label">Portfolio RAG Assistant</div>
+</header>
+
+<main>
+  <section class="hero">
+    <span class="eyebrow">6개 프로젝트 · 실제 경험 기반</span>
+    <h1>이력서 대신, 질문하세요.</h1>
+    <p>프로젝트에서 무엇을 왜 그렇게 결정했는지, 문서를 근거로 답합니다.</p>
+  </section>
+
+  <div class="composer">
+    <form id="composer">
+      <input type="text" id="question" maxlength="300" autocomplete="off"
+             placeholder="예: 티켓팅 인프라 프로젝트에서 왜 그 기술을 선택했나요?">
+      <button type="submit" id="send">질문</button>
+    </form>
+  </div>
+
+  <div class="chips" id="chips"></div>
+  <div id="thread"></div>
+</main>
+
+<script>
+const SAMPLES = [
+  "티켓팅 인프라에서 왜 NLB와 Nginx Ingress를 선택했나요?",
+  "비포펫에서 이미지 업로드는 어떻게 처리했나요?",
+  "72page에서 정산 처리는 어떻게 자동화했나요?",
+  "돌봄플러그에서 손상된 IoT 데이터는 어떻게 걸러냈나요?",
+  "일영랩에서 외부 API 응답 지연은 어떻게 대응했나요?",
+  "KNS에서 대량 문제 등록은 어떻게 개선했나요?"
+];
+
+const thread = document.getElementById("thread");
+const form = document.getElementById("composer");
+const input = document.getElementById("question");
+const send = document.getElementById("send");
+const chips = document.getElementById("chips");
+
+function sessionId() {
+  let id = localStorage.getItem("ask-dahye-session");
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem("ask-dahye-session", id);
+  }
+  return id;
+}
+
+SAMPLES.forEach(text => {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "chip";
+  button.textContent = text;
+  button.addEventListener("click", () => submit(text));
+  chips.appendChild(button);
+});
+
+function createTurn(question) {
+  const turn = document.createElement("article");
+  turn.className = "turn";
+
+  const heading = document.createElement("h2");
+  heading.className = "q";
+  heading.textContent = question;
+
+  const status = document.createElement("div");
+  status.innerHTML = '<span class="pill">Thinking</span>';
+
+  const answer = document.createElement("p");
+  answer.className = "answer";
+
+  const sources = document.createElement("div");
+  sources.className = "sources";
+
+  turn.append(heading, status, answer, sources);
+  thread.appendChild(turn);
+  return { turn, status, answer, sources };
+}
+
+function renderSources(container, list) {
+  container.textContent = "";
+  list.forEach(source => {
+    // 포트폴리오 페이지 앵커(#project-...)는 아직 대상 페이지가 없으므로 링크로 만들지 않는다.
+    const isExternal = /^https?:\/\//.test(source.link);
+    const el = document.createElement(isExternal ? "a" : "span");
+    el.className = "source";
+    el.textContent = `${source.project} · ${source.section}`;
+    if (isExternal) {
+      el.href = source.link;
+      el.target = "_blank";
+      el.rel = "noopener noreferrer";
+    }
+    container.appendChild(el);
+  });
+}
+
+async function submit(question) {
+  question = question.trim();
+  if (!question || send.disabled) return;
+
+  document.body.classList.add("started");
+  input.value = "";
+  send.disabled = true;
+
+  const view = createTurn(question);
+  view.turn.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  let cursor = null;
+  const startStreaming = () => {
+    if (cursor) return;
+    view.status.textContent = "";
+    cursor = document.createElement("span");
+    cursor.className = "cursor";
+    view.answer.after(cursor);
+  };
+  const stopStreaming = () => {
+    if (cursor) { cursor.remove(); cursor = null; }
+    view.status.textContent = "";
+  };
+
+  const handle = (event, data) => {
+    if (event === "token") {
+      startStreaming();
+      view.answer.textContent += data.t;
+    } else if (event === "no_info") {
+      stopStreaming();
+      view.answer.classList.add("muted");
+      view.answer.textContent = data.message;
+    } else if (event === "sources") {
+      // 서버가 2차 게이트로 No-Info를 판정한 경우, 1차 게이트와 같은 회색 톤으로 맞춘다.
+      if (data.no_info) view.answer.classList.add("muted");
+      renderSources(view.sources, data.sources || []);
+    } else if (event === "fallback") {
+      stopStreaming();
+      view.answer.classList.add("muted");
+      view.answer.textContent = data.message;
+      renderSources(view.sources, data.sources || []);
+    } else if (event === "error") {
+      stopStreaming();
+      view.answer.classList.add("muted");
+      view.answer.textContent = data.message;
+    } else if (event === "done") {
+      stopStreaming();
+    }
+  };
+
+  try {
+    const response = await fetch("/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, session_id: sessionId() })
+    });
+    if (!response.ok || !response.body) throw new Error("request failed");
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let boundary;
+      while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+        const frame = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+
+        let event = "message";
+        let payload = "";
+        frame.split("\n").forEach(line => {
+          if (line.startsWith("event:")) event = line.slice(6).trim();
+          else if (line.startsWith("data:")) payload += line.slice(5).trim();
+        });
+        if (payload) handle(event, JSON.parse(payload));
+      }
+    }
+  } catch (error) {
+    stopStreaming();
+    view.answer.classList.add("muted");
+    view.answer.textContent = "연결이 끊겼습니다. 잠시 후 다시 시도해주세요.";
+  } finally {
+    stopStreaming();
+    send.disabled = false;
+    input.focus();
+  }
+}
+
+form.addEventListener("submit", event => {
+  event.preventDefault();
+  submit(input.value);
+});
+</script>
+</body>
+</html>

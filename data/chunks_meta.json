@@ -1,0 +1,209 @@
+[
+  {
+    "id": "ticketing-problem",
+    "project": "티켓팅 인프라",
+    "project_key": "ticketing",
+    "section": "PROBLEM",
+    "period": "2025.05 - 2025.12",
+    "text": "대용량 티켓팅 서비스는 대기열, 인증, 서비스 간 통신, 배포, 장애 대응이 함께 맞물려야 했다. 수동 인프라 생성과 배포는 휴먼 에러가 발생하기 쉬웠고, CORS, 리소스 부족, Health Check 누락 같은 문제가 배포 이후에 드러날 수 있었다.",
+    "source_link": "#project-ticketing"
+  },
+  {
+    "id": "ticketing-architecture",
+    "project": "티켓팅 인프라",
+    "project_key": "ticketing",
+    "section": "ARCHITECTURE",
+    "period": "2025.05 - 2025.12",
+    "text": "API / Auth / Queue / Admin 모듈을 컨테이너화하고 EKS에서 운영하도록 구성했다. Public Subnet에는 ALB와 NAT Gateway를, Private Subnet에는 EKS Worker Node, RDS/Aurora, ElastiCache Redis를 배치해 외부 직접 접근을 차단했다.",
+    "source_link": "#project-ticketing"
+  },
+  {
+    "id": "ticketing-decision-nlb",
+    "project": "티켓팅 인프라",
+    "project_key": "ticketing",
+    "section": "의사결정 · NLB+Nginx Ingress",
+    "period": "2025.05 - 2025.12",
+    "text": "다중 도메인마다 ALB(L7)를 두는 구조는 비용이 과도했다. 트래픽이 몰리는 순간(오픈 시각)에 요청이 집중되는 구조라, 여러 대의 로드밸런서를 두는 대신 앞단에 NLB(L4) 한 대만 두고 L7 라우팅은 Nginx Ingress가 일괄 처리하도록 단일화했다. CORS는 애플리케이션 코드에서 제거하고 Ingress Annotation에서 허용 도메인만 중앙 제어해, ALB 비용 약 40% 절감과 보안 정책 단일화를 함께 얻었다. 관리 포인트를 줄이는 게 이 규모에서는 더 안정적이라고 판단했고, 이후 장애 대응 설계에서도 같은 원칙(필요 이상으로 복잡하게 만들지 않기)을 반복 적용했다.",
+    "source_link": "#project-ticketing"
+  },
+  {
+    "id": "ticketing-decision-gitops",
+    "project": "티켓팅 인프라",
+    "project_key": "ticketing",
+    "section": "의사결정 · Commit Hash 기반 GitOps",
+    "period": "2025.05 - 2025.12",
+    "text": "latest 덮어쓰기는 ArgoCD 폴링 주기(3분)까지 배포가 지연되고 롤백·추적이 불가능했다. CI 빌드 시점에 Git Commit Hash를 이미지 태그로 부여하고 Helm values.yaml을 자동 커밋하자, ArgoCD가 Manifest 변경을 즉시 감지해 동기화 지연이 180초에서 10초 이내로 줄고 해시 기반 롤백이 가능해졌다.",
+    "source_link": "#project-ticketing"
+  },
+  {
+    "id": "ticketing-decision-resource",
+    "project": "티켓팅 인프라",
+    "project_key": "ticketing",
+    "section": "의사결정 · 관측 기반 리소스 튜닝",
+    "period": "2025.05 - 2025.12",
+    "text": "container_memory_working_set_bytes 실측으로 과점유 리소스를 Request 250m·512Mi / Limit 500m·1Gi로 하향하고, 부하가 적은 서비스 replica를 1로 조정했다. 관리자 서비스에는 PriorityClass(1,000,000)를 부여해 리소스 부족 시 우선 배치를 보장, 노드 증설 없이 OOMKilled를 해소했다. 한정된 t3.medium 단일 노드에서 Pod Pending/OOMKilled가 발생했을 때 즉시 스케일업하지 않고, 실측 기반으로 조정하는 방식을 선택했다.",
+    "source_link": "#project-ticketing"
+  },
+  {
+    "id": "ticketing-result",
+    "project": "티켓팅 인프라",
+    "project_key": "ticketing",
+    "section": "RESULT",
+    "period": "2025.05 - 2025.12",
+    "text": "Terraform 코드화로 인프라 프로비저닝 시간을 3시간에서 10분으로 약 94% 단축했다. t3.medium 단일 노드, 노드 증설 0원으로 OOMKilled 0건, Uptime 99.9%를 달성했다. Commit Hash GitOps로 ArgoCD 동기화 지연을 180초에서 10초로 약 94% 단축했다. Redis 대기열 병목 분석 및 성능 개선을 통해 197 RPS에서 10,000 RPS까지 처리량을 개선했다(k6 부하 테스트 기준). 동시 접속 10만 대기열 처리 시나리오를 검증했다.",
+    "source_link": "#project-ticketing"
+  },
+  {
+    "id": "beforepet-problem",
+    "project": "비포펫",
+    "project_key": "beforepet",
+    "section": "PROBLEM",
+    "period": "2024.02 - 2025.03",
+    "text": "고해상도 산책 인증 사진 업로드 시 HTTP 413 에러가 반복됐고, 파일이 컨테이너 로컬 디스크에 저장되어 재기동 시 유실 위험이 있었다. 이미지 업로드가 몰리는 시간대에 처리 지연도 발생했다.",
+    "source_link": "#project-beforepet"
+  },
+  {
+    "id": "beforepet-action-result",
+    "project": "비포펫",
+    "project_key": "beforepet",
+    "section": "ACTION / RESULT",
+    "period": "2024.02 - 2025.03",
+    "text": "Nginx client_max_body_size를 튜닝하고, FastAPI UploadFile 비동기 I/O와 AWS S3 저장 구조로 전환했다. 업로드와 처리를 비동기로 분리해 사용자에게는 즉시 응답한 뒤 처리 상태를 별도로 알려주는 방식을 적용했다. 결과적으로 업로드 실패를 해소하고, 서버 사이드 이미지 최적화로 인증샷 노출 속도를 개선했다. 로컬 디스크에서 S3로 전환해 scale-out 대응이 가능한 stateless 업로드 구조를 확보했고, 리사이즈와 JPEG quality 80~85 압축 기준으로 원본 대비 파일 용량을 약 76% 감소시켰다.",
+    "source_link": "#project-beforepet"
+  },
+  {
+    "id": "beforepet-decision-presigned",
+    "project": "비포펫",
+    "project_key": "beforepet",
+    "section": "의사결정 · Presigned URL 대신 서버 직접 업로드",
+    "period": "2024.02 - 2025.03",
+    "text": "Presigned URL은 클라이언트가 S3에 직접 업로드해 서버 부하를 줄일 수 있지만 원본 파일이 그대로 저장된다. 실시간 산책 인증샷을 빠르게 노출해야 해서 용량 압축·웹 최적화와 원형 이미지 가공이 필요했고, 클라이언트에 맡기면 기기 성능에 따라 결과가 달라지거나 앱이 무거워질 수 있어 FastAPI 서버에서 Pillow로 가공을 마친 최적화 파일만 S3에 저장하도록 설계했다.",
+    "source_link": "#project-beforepet"
+  },
+  {
+    "id": "beforepet-decision-migration",
+    "project": "비포펫",
+    "project_key": "beforepet",
+    "section": "의사결정 · Migration 컨테이너 분리",
+    "period": "2024.02 - 2025.03",
+    "text": "배포 시 migrate 누락으로 런타임 500 에러가 발생할 수 있어 migration 컨테이너를 별도로 분리해 배포 파이프라인의 필수 조건으로 포함했다. app entrypoint에 migrate를 넣는 방식은 scale-out 시 여러 컨테이너가 동시에 마이그레이션을 시도할 수 있어 분리 실행 구조를 선택했다.",
+    "source_link": "#project-beforepet"
+  },
+  {
+    "id": "72page-problem",
+    "project": "72page",
+    "project_key": "72page",
+    "section": "PROBLEM",
+    "period": "2021.01 - 2021.09",
+    "text": "여러 이커머스 채널의 주문 데이터를 엑셀로 수작업 처리해 월 수천 건 규모에서 정산·송장 처리 공수가 누적됐다. 요구사항이 계속 바뀌는 상황에서 데이터 구조를 미리 확정하지 못한 것도 문제였다.",
+    "source_link": "#project-72page"
+  },
+  {
+    "id": "72page-action-result",
+    "project": "72page",
+    "project_key": "72page",
+    "section": "ACTION / RESULT",
+    "period": "2021.01 - 2021.09",
+    "text": "주문 일괄 등록·송장 처리·정산 집계 API를 구현하고, 외부 택배사 배송상태 조회를 Celery Beat로 주기 스케줄링해 Celery 태스크로 비동기 처리했다. 스키마를 유연하게 가져가되 마이그레이션 비용이 커지지 않는 선을 찾는 게 핵심이었다. 결과적으로 월 정산 처리 시간을 약 60% 단축하고, API 장애 시에도 태스크 재처리 구조를 확보했다. 다수 판매 채널의 주문·정산 데이터를 월 수천 건 규모로 처리한다.",
+    "source_link": "#project-72page"
+  },
+  {
+    "id": "72page-decision-broker",
+    "project": "72page",
+    "project_key": "72page",
+    "section": "의사결정 · 브로커/결과저장소 책임 분리",
+    "period": "2021.01 - 2021.09",
+    "text": "주기적인 배송상태 조회·정산 집계는 Celery Beat가 스케줄링을 담당하고, 생성된 태스크는 RabbitMQ 브로커를 통해 워커에 전달했다. Redis 단일 구성으로 두면 큐 적체가 캐시 기능까지 전파되는 SPOF가 될 수 있어, 브로커는 RabbitMQ, 결과 저장소는 Redis(Result Backend)로 분리했다. RabbitMQ의 ACK/NACK로 워커 비정상 종료 시에도 태스크를 유실하지 않고 재처리해, 외부 API 장애·워커 다운 상황에서도 정산·송장 작업의 신뢰성을 확보했다.",
+    "source_link": "#project-72page"
+  },
+  {
+    "id": "domplug-problem",
+    "project": "돌봄플러그",
+    "project_key": "dolbomplug",
+    "section": "PROBLEM",
+    "period": "2022.09 - 2023.03",
+    "text": "네트워크 불안정 환경에서 손상된 IoT 패킷이 검증 없이 DB에 저장되고, 이상 상황 인지가 수동 확인에 의존했다. 실시간 알림 기능의 안정성도 담당해야 했다.",
+    "source_link": "#project-dolbomplug"
+  },
+  {
+    "id": "domplug-action-result",
+    "project": "돌봄플러그",
+    "project_key": "dolbomplug",
+    "section": "ACTION / RESULT",
+    "period": "2022.09 - 2023.03",
+    "text": "TCP 수신, AES-128-CBC 복호화, CRC 검증, Fail-fast 드랍, FCM/SMS 이중 알림, 관리자 모니터링 화면을 구성했다. 메시지 유실 없이 재전송을 보장하는 구조를 만들되, 완전한 메시지 큐 시스템 도입은 트래픽 규모에 비해 과했다고 판단해 훨씬 가벼운 재시도 로직으로 대체했다. 결과적으로 손상 데이터의 DB 유입을 차단하고 수동 확인 중심 모니터링을 자동 알림 구조로 전환했다.",
+    "source_link": "#project-dolbomplug"
+  },
+  {
+    "id": "domplug-decision-failfast",
+    "project": "돌봄플러그",
+    "project_key": "dolbomplug",
+    "section": "의사결정 · Fail-fast와 재전송 책임 위임",
+    "period": "2022.09 - 2023.03",
+    "text": "CRC 실패는 서버에서 원본 복구가 어려운 물리적 손상으로 보고, 재처리 큐에 적재하는 대신 즉시 드랍하는 fail-fast 방식을 선택했다. 재전송 책임은 단말기의 ACK 주기로 위임하고, 서버는 손상 데이터를 DB에 저장하지 않고 로그로만 기록해 커넥션 낭비와 가비지 데이터 유입을 줄였다.",
+    "source_link": "#project-dolbomplug"
+  },
+  {
+    "id": "ilyounglab-full",
+    "project": "일영랩",
+    "project_key": "ilyounglab",
+    "section": "PROBLEM / ACTION / RESULT",
+    "period": "2021.10 - 2022.05",
+    "text": "성적서 작성, 세금계산서 발행, PDF 출력이 담당자별 수작업으로 처리되어 오류가 반복됐다. 외부 API 응답 지연이 전체 서비스 지연으로 이어지는 구조이기도 했다. 현장 담당자와 업무 흐름을 정리하고, 외부 세금계산서 API, PDFKit, Excel 업로드 파싱을 구현했다. 권한 로직은 뷰가 아닌 서비스 레이어에서 제어해 엔드포인트가 늘어도 권한 누락이 생기지 않도록 했다. 캐싱 레이어와 타임아웃 상한을 두어 최악의 경우에도 응답 시간이 일정 수준 이상 늘어나지 않도록 만들었다. 결과적으로 행정 처리 오류율 약 90% 감소, 보고서 생성 시간 약 70% 단축을 달성했다.",
+    "source_link": "#project-ilyounglab"
+  },
+  {
+    "id": "kns-full",
+    "project": "KNS",
+    "project_key": "kns",
+    "section": "PROBLEM / ACTION / RESULT",
+    "period": "2022.05 - 2022.09",
+    "text": "시험 문제 수작업 등록 과정에서 중복 입력과 형식 오류가 반복되고, 수백 건 단위 등록 처리 시간이 과도했다. 백엔드 API 설계와 배포 파이프라인 구축을 맡았으며, 특히 배포 중 다운타임을 없애는 데 집중해 무중단 배포 방식으로 전환한 게 핵심 기여였다. Pandas로 필수 컬럼·타입·빈 값 검증을 선행하고, Django ORM bulk_create와 유사도 기반 중복 검증을 적용했다. 결과적으로 관리자 오류율 약 90% 감소, 대량 등록 처리 시간과 중복 데이터 유입을 줄였다.",
+    "source_link": "#project-kns"
+  },
+  {
+    "id": "blog-msa-redis",
+    "project": "기술 블로그",
+    "project_key": "blog",
+    "section": "MSA · Redis 대기열 · 성능 개선",
+    "period": null,
+    "text": "티켓팅 인프라 프로젝트의 Redis 대기열 병목을 분석하고 개선한 기록. 197 RPS에서 10,000 RPS로 처리량을 개선했고, Heartbeat와 TTL을 활용한 대기열 순번 안정성 정리 내용을 다룬다.",
+    "source_link": "https://gukgirl.tistory.com"
+  },
+  {
+    "id": "blog-api-circuit-breaker",
+    "project": "기술 블로그",
+    "project_key": "blog",
+    "section": "API · OpenFeign · Circuit Breaker",
+    "period": null,
+    "text": "MSA 환경에서의 서비스 간 통신 규약, OpenFeign과 Resilience4j Circuit Breaker를 활용한 fallback 처리, 분산 상태 관리와 상태 분리 기준을 정리한 글.",
+    "source_link": "https://gukgirl.tistory.com"
+  },
+  {
+    "id": "blog-infra-terraform-eks",
+    "project": "기술 블로그",
+    "project_key": "blog",
+    "section": "INFRA · Terraform · EKS · GitOps",
+    "period": null,
+    "text": "Terraform, EKS, GitOps, ArgoCD, Prometheus 기반 인프라 구축 프로젝트 정리. VPC 설계, Nginx Ingress, IRSA, OOMKilled 리소스 튜닝 경험을 프로젝트 기반으로 정리한 글.",
+    "source_link": "https://gukgirl.tistory.com"
+  },
+  {
+    "id": "career-summary",
+    "project": "경력 요약",
+    "project_key": "career",
+    "section": "경력 개요",
+    "period": "2021.01 - 현재",
+    "text": "정규직 백엔드 엔지니어 4년 이상. 아이디얼에서 주니어 백엔드 개발자로 재직하며 수주 프로젝트 5건을 요구사항 분석부터 운영 배포까지 주도 납품했고, 이 중 3건은 현재도 클라이언트 운영 중이다(72page, KNS, 비포펫). 퇴사 후 2025.05~2025.12 KDT(K-Digital Training) 과정에서 Terraform·EKS·GitOps 등 인프라 역량을 집중 보강했고, 2026.01부터 CKA·AWS SAA 자격 취득과 티켓팅 프로젝트 리팩터링, 기술 블로그 작성을 이어가고 있다. 주력 실무 스택은 Python, Django, FastAPI, Celery, Docker, Nginx, MySQL이며, 프로젝트 적용 스택으로 Java, Spring Boot, Terraform, EKS, ArgoCD, Helm, AWS, Prometheus, Grafana를 다룬다.",
+    "source_link": "#career"
+  },
+  {
+    "id": "career-education",
+    "project": "경력 요약",
+    "project_key": "career",
+    "section": "학력 및 자격",
+    "period": null,
+    "text": "가천대학교 전기공학과 학사(2025.02 졸업), 부천대학교 컴퓨터소프트웨어학과(2018.02 졸업). CKA(Certified Kubernetes Administrator, 2026.07 취득), AWS Certified Solutions Architect - Associate(2026.05 취득), 정보처리기사(2024 취득). YOLOv8 버스 정류장 혼잡도 분석 시스템으로 졸업작품 경진대회 최우수상을 수상했다.",
+    "source_link": "#career"
+  }
+]
