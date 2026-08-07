@@ -229,12 +229,15 @@ async def answer_stream(question: str, session_id: str, ip: str):
         return
 
     chunks = top_chunks(query_vector)
+    log.info("질문: %s | 임계값 %.2f 통과 청크 %d개", question, SIMILARITY_THRESHOLD, len(chunks))
 
     # 1차 게이트: 임계값을 넘는 청크가 없으면 LLM을 부르지 않고 바로 No-Info로 끝낸다.
     if not chunks:
+        log.info("1차 게이트 차단 -> LLM 호출 생략 (토큰 비용 0)")
         yield sse("no_info", {"message": NO_INFO_TEXT})
         return
 
+    log.info("LLM 호출 (근거 청크 %d개 전달)", len(chunks))
     messages = build_messages(question, chunks, history)
 
     async with _llm_gate:
@@ -274,8 +277,10 @@ async def answer_stream(question: str, session_id: str, ip: str):
     # "내용이 없습니다 + 출처 3개"가 되어 화면이 모순되므로 칩을 숨기고,
     # 1차 게이트와 같은 회색 No-Info 톤으로 보이도록 프론트에 알린다.
     if NO_INFO_TEXT in answer or not answer:
+        log.info("2차 게이트 차단 -> LLM이 근거 없음으로 판단, 출처 칩 숨김")
         yield sse("sources", {"sources": [], "no_info": True})
     else:
+        log.info("답변 완료 (%d자, 출처 칩 %d개)", len(answer), len(source_chips(chunks)))
         yield sse("sources", {"sources": source_chips(chunks), "no_info": False})
         history.append({"question": question, "answer": answer})
 

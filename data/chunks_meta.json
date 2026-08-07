@@ -194,7 +194,7 @@
     "project_key": "career",
     "section": "경력 개요",
     "period": "2021.01 - 현재",
-    "text": "정규직 백엔드 엔지니어 4년 이상. 아이디얼에서 주니어 백엔드 개발자로 재직하며 수주 프로젝트 5건을 요구사항 분석부터 운영 배포까지 주도 납품했고, 이 중 3건은 현재도 클라이언트 운영 중이다(72page, KNS, 비포펫). 퇴사 후 2025.05~2025.12 KDT(K-Digital Training) 과정에서 Terraform·EKS·GitOps 등 인프라 역량을 집중 보강했고, 2026.01부터 CKA·AWS SAA 자격 취득과 티켓팅 프로젝트 리팩터링, 기술 블로그 작성을 이어가고 있다. 주력 실무 스택은 Python, Django, FastAPI, Celery, Docker, Nginx, MySQL이며, 프로젝트 적용 스택으로 Java, Spring Boot, Terraform, EKS, ArgoCD, Helm, AWS, Prometheus, Grafana를 다룬다.",
+    "text": "백엔드 엔지니어 4년 이상. 아이디얼에서 주니어 백엔드 개발자로 재직하며 수주 프로젝트 5건을 요구사항 분석부터 운영 배포까지 주도 납품했고, 이 중 3건은 현재도 클라이언트 운영 중이다(72page, KNS, 비포펫). 퇴사 후 2025.05~2025.12 KDT(K-Digital Training) 과정에서 Terraform·EKS·GitOps 등 인프라 역량을 집중 보강했고, 2026.01부터 CKA·AWS SAA 자격 취득과 티켓팅 프로젝트 리팩터링, 기술 블로그 작성을 이어가고 있다. 주력 실무 스택은 Python, Django, FastAPI, Celery, Docker, Nginx, MySQL이며, 프로젝트 적용 스택으로 Java, Spring Boot, Terraform, EKS, ArgoCD, Helm, AWS, Prometheus, Grafana를 다룬다.",
     "source_link": "#career"
   },
   {
