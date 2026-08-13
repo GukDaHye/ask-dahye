@@ -4,7 +4,8 @@
 
 **Live Demo**: (배포 예정) · **기술 블로그**: [1일차](#관련-글) · [2일차](#관련-글)
 
-![Ask Dahye 첫 화면](docs/screenshot.png)
+<img width="1052" height="706" alt="Screen Recording 2026-08-13 at 15 21 56" src="https://github.com/user-attachments/assets/24791f7b-25ef-451f-a803-a4a1a0b25e0d" />
+
 
 ---
 
