@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from openai import APIConnectionError, APIStatusError, AsyncOpenAI, APITimeoutError, RateLimitError
 from pydantic import BaseModel, Field
 
+import mcp_client
 from search import EMBED_MODEL, cosine_similarity, load_index
 
 load_dotenv()
@@ -67,6 +68,27 @@ SYSTEM_PROMPT = f"""너는 국다혜(백엔드 엔지니어)의 포트폴리오�
 5. 참고자료 번호나 "참고자료에 따르면" 같은 표현은 쓰지 않는다. 출처는 화면에서 따로 보여준다.
 6. 마크다운을 쓰지 않는다. 백틱, 별표, 목록 기호 없이 일반 문장으로만 답한다(화면이 평문으로 렌더링한다)."""
 
+# 코드 질문(MCP 경로)용 프롬프트. 근거가 문서가 아니라 실제 파일이라 지시가 달라진다.
+CODE_SYSTEM_PROMPT = f"""너는 국다혜의 GitHub 리포 코드를 근거로 답하는 어시스턴트다.
+
+규칙:
+1. 아래 참고자료는 실제 리포에서 읽어온 파일 내용이다. 파일에 있는 것만 근거로 답한다.
+2. 파일에 없는 구현·기술·수치는 만들어내지 않는다. 답할 수 없으면 "{NO_INFO_TEXT}"라고만 답한다.
+3. 질문이 이 파일들과 무관하면 억지로 연결하지 말고 2번대로 답한다.
+4. 한국어로 3~6문장, 담백한 존댓말로 답한다. 근거가 된 파일명은 언급해도 좋다.
+5. 코드를 길게 그대로 붙여넣지 말고, 무엇을 어떻게 처리하는지 설명한다.
+6. 참고자료에 "(파일 목록)" 항목이 있으면 그것이 리포의 실제 파일 목록이다.
+   구조를 묻는 질문에는 그 목록을 근거로 답한다. 목록이 있는데 "없습니다"라고 답하지 않는다.
+   파일 경로를 나열할 때는 줄바꿈으로 구분한다(화면이 줄바꿈을 그대로 렌더링한다).
+7. 마크다운을 쓰지 않는다. 백틱, 별표, 하이픈 목록 기호 없이 쓴다."""
+
+# 1단계 라우팅용 키워드. 임베딩 분류기 대신 키워드를 쓴 이유는 판단 근거가 로그에 그대로
+# 남고 눈으로 검증할 수 있어서다. 오분류가 보이면 이 목록만 고치면 된다.
+CODE_KEYWORDS = (
+    "코드", "구현", "소스", "어떻게 짰", "어떻게 만들었", "파일 구조", "디렉토리",
+    "함수", "클래스", "리팩터", "리팩토링", "레포", "리포", "깃허브", "github",
+)
+
 _client: AsyncOpenAI | None = None
 _sessions: dict[str, deque] = {}
 _ip_hits: dict[str, deque] = {}
@@ -90,8 +112,13 @@ async def lifespan(app: FastAPI):
     log.info("임베딩 로드 완료: %d개 청크, dim=%d", embeddings.shape[0], embeddings.shape[1])
     global _client
     _client = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    if mcp_client.is_configured():
+        log.info("GitHub MCP 연동 활성 (%s)", mcp_client.repo_slug())
+    else:
+        log.info("GitHub MCP 미설정 — 코드 질문도 RAG 경로로 처리한다")
     yield
     await _client.close()
+    await mcp_client.close()
 
 
 app = FastAPI(title="Ask Dahye", lifespan=lifespan)
@@ -153,11 +180,18 @@ def top_chunks(query_vector: np.ndarray) -> list[dict]:
     ]
 
 
-def build_messages(question: str, chunks: list[dict], history: deque) -> list[dict]:
-    references = "\n\n".join(
-        f"[{c['project']} · {c['section']}]\n{c['text']}" for c in chunks
-    )
-    messages = [{"role": "system", "content": f"{SYSTEM_PROMPT}\n\n참고자료:\n{references}"}]
+def format_reference(chunk: dict) -> str:
+    # MCP로 가져온 파일은 경계를 분명히 해서 넣는다. 지식베이스 청크는 기존 형식 유지.
+    if chunk.get("kind") == "github":
+        return f"[파일: {chunk['section']}]\n<<<\n{chunk['text']}\n>>>"
+    return f"[{chunk['project']} · {chunk['section']}]\n{chunk['text']}"
+
+
+def build_messages(
+    question: str, chunks: list[dict], history: deque, system_prompt: str = SYSTEM_PROMPT
+) -> list[dict]:
+    references = "\n\n".join(format_reference(c) for c in chunks)
+    messages = [{"role": "system", "content": f"{system_prompt}\n\n참고자료:\n{references}"}]
     for turn in history:
         messages.append({"role": "user", "content": turn["question"]})
         messages.append({"role": "assistant", "content": turn["answer"]})
@@ -171,9 +205,52 @@ def sse(event: str, payload: dict) -> str:
 
 def source_chips(chunks: list[dict]) -> list[dict]:
     return [
-        {"project": c["project"], "section": c["section"], "link": c["source_link"]}
+        {
+            "project": c["project"],
+            "section": c["section"],
+            "link": c["source_link"],
+            # 프론트가 GitHub 파일 칩과 지식베이스 칩을 구분해 표시하는 데 쓴다.
+            "kind": c.get("kind", "kb"),
+        }
         for c in chunks[:MAX_SOURCE_CHIPS]
     ]
+
+
+def is_no_info_answer(answer: str) -> bool:
+    """LLM이 "근거 없음"으로 답한 것인지 판정한다(2차 게이트).
+
+    단순 부분 문자열 검사로는 안 된다. 근거 있는 답을 한 뒤 마지막에 단서를 붙이는 패턴이
+    흔한데("...전체 구현은 이 지식베이스에는 해당 내용이 없습니다"), 그걸 거절로 보면
+    유효한 답변의 출처 칩까지 사라진다. MCP 경로에서는 파일을 일부만 넣기 때문에
+    이 패턴이 특히 자주 나온다.
+
+    그래서 "문구로 답을 시작했는가"를 기준으로 본다. 거절이면 문구가 앞에 오고,
+    단서면 뒤에 붙는다.
+    """
+    if not answer:
+        return True
+    if NO_INFO_TEXT in answer[:60]:
+        return True
+    # 짧은 답변에 문구만 들어 있으면 거절로 본다.
+    return len(answer) < 100 and NO_INFO_TEXT in answer
+
+
+def is_code_question(question: str) -> bool:
+    lowered = question.lower()
+    return any(keyword in lowered for keyword in CODE_KEYWORDS)
+
+
+async def collect_mcp_chunks(question: str) -> list[dict]:
+    """MCP 경로로 근거를 모은다. 실패하면 빈 목록을 반환해 호출자가 RAG로 폴백하게 한다."""
+    try:
+        return await mcp_client.collect_code_context(question)
+    except mcp_client.McpUnavailable as error:
+        log.warning("MCP 사용 불가 -> RAG 폴백: %s", error)
+        return []
+    except Exception as error:
+        # 예상 못 한 오류에도 챗봇이 죽지 않아야 한다.
+        log.error("MCP 예상 외 오류 -> RAG 폴백: %s: %s", type(error).__name__, error)
+        return []
 
 
 def is_retryable(error: Exception) -> bool:
@@ -221,24 +298,46 @@ async def answer_stream(question: str, session_id: str, ip: str):
 
     history = _sessions.setdefault(session_id, deque(maxlen=MAX_HISTORY_TURNS))
 
-    try:
-        query_vector = await embed(build_search_query(question, history))
-    except Exception as error:
-        log.error("임베딩 호출 실패: %s: %s", type(error).__name__, error)
-        yield sse("error", {"message": "지금은 답변이 어렵습니다. 잠시 후 다시 시도해주세요."})
-        return
+    # ---- 1단계 라우팅: 코드 질문이면 MCP 경로, 아니면 기존 RAG 경로 ----
+    chunks: list[dict] = []
+    route = "rag"
+    if is_code_question(question):
+        if not mcp_client.is_configured():
+            log.info("라우팅: 코드 질문이지만 GITHUB_TOKEN/GITHUB_REPO 미설정 -> RAG 경로")
+        else:
+            chunks = await collect_mcp_chunks(question)
+            if chunks:
+                route = "mcp"
+                log.info("라우팅: MCP 경로 (%s, 파일 %d개)", mcp_client.repo_slug(), len(chunks))
+            else:
+                route = "mcp->rag"
+                log.info("라우팅: MCP 근거 없음 -> RAG 경로로 폴백")
+    else:
+        log.info("라우팅: RAG 경로 (코드 키워드 없음)")
 
-    chunks = top_chunks(query_vector)
-    log.info("질문: %s | 임계값 %.2f 통과 청크 %d개", question, SIMILARITY_THRESHOLD, len(chunks))
+    # ---- 기존 RAG 경로 (검증 완료. MCP가 근거를 못 구했을 때도 여기로 내려온다) ----
+    if not chunks:
+        try:
+            query_vector = await embed(build_search_query(question, history))
+        except Exception as error:
+            log.error("임베딩 호출 실패: %s: %s", type(error).__name__, error)
+            yield sse("error", {"message": "지금은 답변이 어렵습니다. 잠시 후 다시 시도해주세요."})
+            return
 
-    # 1차 게이트: 임계값을 넘는 청크가 없으면 LLM을 부르지 않고 바로 No-Info로 끝낸다.
+        chunks = top_chunks(query_vector)
+        log.info("질문: %s | 임계값 %.2f 통과 청크 %d개", question, SIMILARITY_THRESHOLD, len(chunks))
+
+    # 1차 게이트: 근거가 하나도 없으면 LLM을 부르지 않고 바로 No-Info로 끝낸다.
+    # MCP 경로에서 관련 파일을 못 찾은 경우도 RAG를 거쳐 여기서 함께 걸린다.
     if not chunks:
         log.info("1차 게이트 차단 -> LLM 호출 생략 (토큰 비용 0)")
         yield sse("no_info", {"message": NO_INFO_TEXT})
         return
 
-    log.info("LLM 호출 (근거 청크 %d개 전달)", len(chunks))
-    messages = build_messages(question, chunks, history)
+    log.info("LLM 호출 (경로 %s, 근거 %d개 전달)", route, len(chunks))
+    messages = build_messages(
+        question, chunks, history, CODE_SYSTEM_PROMPT if route == "mcp" else SYSTEM_PROMPT
+    )
 
     async with _llm_gate:
         try:
@@ -276,7 +375,7 @@ async def answer_stream(question: str, session_id: str, ip: str):
     # 2차 게이트: 임계값은 넘었지만 LLM이 근거 없다고 판단한 경우. 이때 출처 칩을 띄우면
     # "내용이 없습니다 + 출처 3개"가 되어 화면이 모순되므로 칩을 숨기고,
     # 1차 게이트와 같은 회색 No-Info 톤으로 보이도록 프론트에 알린다.
-    if NO_INFO_TEXT in answer or not answer:
+    if is_no_info_answer(answer):
         log.info("2차 게이트 차단 -> LLM이 근거 없음으로 판단, 출처 칩 숨김")
         yield sse("sources", {"sources": [], "no_info": True})
     else:
