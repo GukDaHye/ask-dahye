@@ -7,3 +7,7 @@ __pycache__/
 
 # 임베딩(data/embeddings.npy)은 일부러 커밋한다.
 # 배포 시 임베딩 API 호출 없이 바로 기동되고, 검색 결과가 로컬과 동일하게 재현된다.
+
+# 발행 전 블로그 초안. 글을 올린 뒤에 추적에 다시 추가한다.
+docs/blog_draft_day2.md
+docs/day2_notes.md
