@@ -11,3 +11,6 @@ __pycache__/
 # 발행 전 블로그 초안. 글을 올린 뒤에 추적에 다시 추가한다.
 docs/blog_draft_day2.md
 docs/day2_notes.md
+
+# 지원서는 저장소에 넣지 않는다(포트폴리오로 공개될 수 있음)
+docs/cover_letter_*.md
