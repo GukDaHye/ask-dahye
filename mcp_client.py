@@ -30,9 +30,12 @@ log = logging.getLogger("ask_dahye.mcp")
 MCP_ENDPOINT = "https://api.githubcopilot.com/mcp/"
 PROTOCOL_VERSION = "2025-06-18"
 
-# 서버 쪽에서도 쓰기 도구를 잘라낸다. 토큰이 read-only여도 방어를 한 겹 더 둔다.
+# 노출 도구를 서버 쪽에서 아예 좁힌다. 토큰이 Contents Read-only 단일 리포 PAT이지만
+# 방어를 한 겹 더 둔다. 이 헤더를 걸면 쓰기 도구는 물론 허용 목록 밖의 읽기 도구까지
+# "unknown tool"로 거부된다(list_branches, create_or_update_file 모두 거부되는 것을 확인).
 MCP_READONLY = "true"
 MCP_TOOLSETS = "repos"
+MCP_TOOLS = "get_file_contents"
 
 REQUEST_TIMEOUT = 15.0
 
@@ -97,8 +100,23 @@ class McpUnavailable(Exception):
     """MCP 경로를 쓸 수 없다. 호출자는 RAG 경로로 폴백해야 한다."""
 
 
+def allowed_slugs() -> tuple[str, ...]:
+    """접근을 허용하는 리포 목록.
+
+    지금은 GITHUB_REPO 하나뿐이다. 이 챗봇 자신의 소스를 근거로 "어떻게 만들어졌나"에
+    답하는 것이 목적이므로 다중 리포는 범위가 아니다.
+
+    목록 형태로 둔 이유는 넓힐 때 이 함수와 호출부의 slug 인자만 손대면 되게 하려는 것이다.
+    라우팅(질문 -> 어느 리포) 자체는 구현하지 않았다.
+    """
+    slug = os.environ.get("GITHUB_REPO")
+    return (slug,) if slug else ()
+
+
 def repo_slug() -> str | None:
-    return os.environ.get("GITHUB_REPO")
+    """기본 대상 리포. 로그와 표시용."""
+    allowed = allowed_slugs()
+    return allowed[0] if allowed else None
 
 
 def is_configured() -> bool:
@@ -106,11 +124,26 @@ def is_configured() -> bool:
     return bool(os.environ.get("GITHUB_TOKEN") and repo_slug())
 
 
-def _owner_and_repo() -> tuple[str, str]:
-    slug = repo_slug() or ""
-    owner, _, repo = slug.partition("/")
+def _resolve_slug(slug: str | None) -> str:
+    """대상 리포를 확정한다. 허용 목록에 없는 리포는 요청조차 보내지 않는다.
+
+    토큰이 단일 리포 fine-grained PAT이라 다른 리포를 부르면 어차피 404가 나지만,
+    코드 쪽에서 먼저 막아 의도하지 않은 접근이 나가지 않게 한다.
+    """
+    allowed = allowed_slugs()
+    if not allowed:
+        raise McpUnavailable("GITHUB_REPO가 설정되지 않았다")
+    target = slug or allowed[0]
+    if target not in allowed:
+        raise McpUnavailable(f"허용되지 않은 리포 접근 시도: {target!r}")
+    return target
+
+
+def _owner_and_repo(slug: str | None = None) -> tuple[str, str]:
+    target = _resolve_slug(slug)
+    owner, _, repo = target.partition("/")
     if not owner or not repo:
-        raise McpUnavailable(f"GITHUB_REPO 형식이 owner/repo가 아니다: {slug!r}")
+        raise McpUnavailable(f"GITHUB_REPO 형식이 owner/repo가 아니다: {target!r}")
     return owner, repo
 
 
@@ -139,6 +172,7 @@ def _headers() -> dict[str, str]:
         "Accept": "application/json, text/event-stream",
         "X-MCP-Readonly": MCP_READONLY,
         "X-MCP-Toolsets": MCP_TOOLSETS,
+        "X-MCP-Tools": MCP_TOOLS,
     }
     if _session_id:
         headers["Mcp-Session-Id"] = _session_id
@@ -245,9 +279,9 @@ async def _call_tool(name: str, arguments: dict) -> list[dict]:
     return result.get("content") or []
 
 
-async def list_files(path: str = "/") -> list[dict]:
+async def list_files(path: str = "/", *, slug: str | None = None) -> list[dict]:
     """디렉토리 목록을 반환한다. 각 항목은 type/name/path/size를 가진다."""
-    owner, repo = _owner_and_repo()
+    owner, repo = _owner_and_repo(slug)
     content = await _call_tool("get_file_contents", {"owner": owner, "repo": repo, "path": path})
 
     for item in content:
@@ -262,9 +296,9 @@ async def list_files(path: str = "/") -> list[dict]:
     return []
 
 
-async def read_file(path: str) -> str | None:
+async def read_file(path: str, *, slug: str | None = None) -> str | None:
     """파일 내용을 반환한다. 텍스트로 못 읽으면 None."""
-    owner, repo = _owner_and_repo()
+    owner, repo = _owner_and_repo(slug)
     content = await _call_tool("get_file_contents", {"owner": owner, "repo": repo, "path": path})
 
     # 파일 내용은 text가 아니라 resource 항목으로 온다(text는 "다운로드 완료" 안내문).
@@ -309,9 +343,11 @@ def _rank(entry: dict, question: str) -> tuple[int, int]:
     return (-score, entry.get("path", "").count("/"))
 
 
-async def _gather_listings(paths: list[str]) -> list[dict]:
+async def _gather_listings(paths: list[str], slug: str) -> list[dict]:
     """여러 디렉토리를 한꺼번에 조회한다. 개별 실패는 무시하고 얻은 것만 모은다."""
-    results = await asyncio.gather(*(list_files(p) for p in paths), return_exceptions=True)
+    results = await asyncio.gather(
+        *(list_files(p, slug=slug) for p in paths), return_exceptions=True
+    )
     entries: list[dict] = []
     for path, result in zip(paths, results):
         if isinstance(result, BaseException):
@@ -321,16 +357,18 @@ async def _gather_listings(paths: list[str]) -> list[dict]:
     return entries
 
 
-async def _repo_entries() -> list[dict]:
-    """리포의 파일·디렉토리 목록을 모은다(루트 + 한 단계 하위). TTL 동안 캐싱한다."""
+async def _repo_entries(slug: str) -> list[dict]:
+    """리포의 파일·디렉토리 목록을 모은다(루트 + 한 단계 하위). TTL 동안 캐싱한다.
+
+    캐시 키에 slug를 넣어둔 이유는 대상 리포가 바뀌어도 옛 목록을 쓰지 않게 하려는 것이다.
+    """
     global _listing_cache
 
-    slug = repo_slug() or ""
     if _listing_cache and _listing_cache[0] == slug and time.monotonic() < _listing_cache[1]:
         return _listing_cache[2]
 
     # 1) 루트를 먼저 훑는다. 세션도 여기서 열린다.
-    entries = await list_files("/")
+    entries = await list_files("/", slug=slug)
 
     # 2) 하위 디렉토리를 한 단계 내려간다. 순차로 돌면 디렉토리 수만큼 느려지므로 병렬로 보낸다.
     subdirs = [
@@ -338,21 +376,25 @@ async def _repo_entries() -> list[dict]:
         if e.get("type") == "dir" and not (e.get("name") or "").startswith(".")
     ][:MAX_LIST_DIRS]
     if subdirs:
-        entries.extend(await _gather_listings(subdirs))
+        entries.extend(await _gather_listings(subdirs, slug))
 
     _listing_cache = (slug, time.monotonic() + LISTING_TTL_SECONDS, entries)
     log.info("MCP: 파일 목록 캐싱 (%d개 항목, 디렉토리 %d개 조회)", len(entries), len(subdirs) + 1)
     return entries
 
 
-async def collect_code_context(question: str) -> list[dict]:
+async def collect_code_context(question: str, *, slug: str | None = None) -> list[dict]:
     """리포에서 근거가 될 파일을 모아 RAG 청크와 같은 모양의 dict 목록으로 반환한다.
 
     같은 모양으로 맞추는 게 핵심이다. 프롬프트 조립, 2단 게이트, 출처 칩, SSE 릴레이가
     전부 이 모양을 전제로 이미 동작하므로 기존 코드를 고치지 않아도 된다.
+
+    slug를 생략하면 GITHUB_REPO를 쓴다. 다중 리포로 넓힐 때 호출부에서 넘기면 되도록
+    인자만 열어뒀고, 어느 리포로 보낼지 판단하는 로직은 넣지 않았다.
     """
-    owner, repo = _owner_and_repo()
-    entries = await _repo_entries()
+    target = _resolve_slug(slug)
+    owner, repo = _owner_and_repo(target)
+    entries = await _repo_entries(target)
 
     chunks: list[dict] = []
 
@@ -375,7 +417,9 @@ async def collect_code_context(question: str) -> list[dict]:
 
     # 상위 후보 파일을 병렬로 읽는다.
     picked = candidates[:MAX_CODE_FILES]
-    texts = await asyncio.gather(*(read_file(e["path"]) for e in picked), return_exceptions=True)
+    texts = await asyncio.gather(
+        *(read_file(e["path"], slug=target) for e in picked), return_exceptions=True
+    )
 
     for entry, text in zip(picked, texts):
         if isinstance(text, BaseException):
