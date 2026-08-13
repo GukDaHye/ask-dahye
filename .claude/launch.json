@@ -4,7 +4,7 @@
     {
       "name": "ask-dahye",
       "runtimeExecutable": ".venv/bin/uvicorn",
-      "runtimeArgs": ["main:app", "--port", "8000"],
+      "runtimeArgs": ["main:app", "--port", "8000", "--reload"],
       "port": 8000
     }
   ]

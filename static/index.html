@@ -131,6 +131,11 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:2px;}
   line-height:1.4;
 }
 .chip:hover{border-color:var(--primary);color:var(--primary);}
+/* 입력창 바로 아래 한 줄. 이 칩만 답변 근거가 지식베이스 텍스트가 아니라 실제 소스라서
+   GitHub 출처 칩과 같은 표시(</>, 강조색)를 줘서 구분한다. */
+.chips.featured{padding-top:0.9rem;padding-bottom:0.1rem;}
+.chip.code{border-color:var(--primary);color:var(--primary);}
+.chip.code::before{content:"</> ";font-family:var(--font-mono);font-size:0.9em;opacity:0.65;}
 
 body.started .hero,
 body.started .chips{display:none;}
@@ -223,11 +228,16 @@ a.source:hover{border-color:var(--primary);color:var(--primary);}
     </form>
   </div>
 
+  <div class="chips featured" id="chips-featured"></div>
   <div class="chips" id="chips"></div>
   <div id="thread"></div>
 </main>
 
 <script>
+// 이 질문만 지식베이스가 아니라 GitHub의 실제 소스를 근거로 답한다(MCP 경로).
+// 문구에 "만들어졌"가 들어가야 코드 질문으로 라우팅된다 — main.py의 CODE_KEYWORDS 참고.
+const FEATURED_SAMPLE = "이 챗봇은 어떻게 만들어졌나요?";
+
 const SAMPLES = [
   "티켓팅 인프라에서 왜 NLB와 Nginx Ingress를 선택했나요?",
   "비포펫에서 이미지 업로드는 어떻게 처리했나요?",
@@ -242,6 +252,7 @@ const form = document.getElementById("composer");
 const input = document.getElementById("question");
 const send = document.getElementById("send");
 const chips = document.getElementById("chips");
+const chipsFeatured = document.getElementById("chips-featured");
 
 function sessionId() {
   let id = localStorage.getItem("ask-dahye-session");
@@ -252,14 +263,17 @@ function sessionId() {
   return id;
 }
 
-SAMPLES.forEach(text => {
+function addChip(container, text, className) {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "chip";
+  button.className = className;
   button.textContent = text;
   button.addEventListener("click", () => submit(text));
-  chips.appendChild(button);
-});
+  container.appendChild(button);
+}
+
+addChip(chipsFeatured, FEATURED_SAMPLE, "chip code");
+SAMPLES.forEach(text => addChip(chips, text, "chip"));
 
 function createTurn(question) {
   const turn = document.createElement("article");
