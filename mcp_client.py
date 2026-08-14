@@ -33,8 +33,11 @@ PROTOCOL_VERSION = "2025-06-18"
 # 노출 도구를 서버 쪽에서 아예 좁힌다. 토큰이 Contents Read-only 단일 리포 PAT이지만
 # 방어를 한 겹 더 둔다. 이 헤더를 걸면 쓰기 도구는 물론 허용 목록 밖의 읽기 도구까지
 # "unknown tool"로 거부된다(list_branches, create_or_update_file 모두 거부되는 것을 확인).
+#
+# X-MCP-Toolsets은 일부러 보내지 않는다. X-MCP-Tools와 같이 보내면 두 값이 합집합으로
+# 처리돼서 toolset 전체가 다시 열린다(Toolsets=repos를 같이 보내면 list_branches가 통과했다).
+# 좁히는 게 목적이므로 도구 목록만 보낸다.
 MCP_READONLY = "true"
-MCP_TOOLSETS = "repos"
 MCP_TOOLS = "get_file_contents"
 
 REQUEST_TIMEOUT = 15.0
@@ -171,7 +174,6 @@ def _headers() -> dict[str, str]:
         # 응답이 SSE 프레임으로 오는 경우가 있어 둘 다 받는다고 알린다.
         "Accept": "application/json, text/event-stream",
         "X-MCP-Readonly": MCP_READONLY,
-        "X-MCP-Toolsets": MCP_TOOLSETS,
         "X-MCP-Tools": MCP_TOOLS,
     }
     if _session_id:
@@ -246,7 +248,7 @@ async def _initialize() -> None:
             headers=_headers(),
             json={"jsonrpc": "2.0", "method": "notifications/initialized"},
         )
-        log.info("MCP 세션 생성 (readonly=%s, toolsets=%s)", MCP_READONLY, MCP_TOOLSETS)
+        log.info("MCP 세션 생성 (readonly=%s, tools=%s)", MCP_READONLY, MCP_TOOLS)
 
 
 async def _call_tool(name: str, arguments: dict) -> list[dict]:
