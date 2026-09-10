@@ -19,3 +19,4 @@ docs/ai_tooling_log.md
 
 # 지원서는 저장소에 넣지 않는다(포트폴리오로 공개될 수 있음)
 docs/cover_letter_*.md
+.pytest_cache/
